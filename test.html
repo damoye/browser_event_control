@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Event Controller 自检</title></head>
+<body>
+<h1>Event Controller 自检</h1>
+<p id="result">检测中…</p>
+<p>合成事件与真实事件走同一条传播路径（window 捕获 → document/window 目标），所以这里能直接验证拦截。</p>
+<h2>手动验证</h2>
+<p>切换到别的标签页 / 点到别处，下面的日志应当保持为空：</p>
+<pre id="log"></pre>
+<script>
+  // [显示名, 事件名, 注册目标, 触发方式]
+  const input = document.createElement('input');
+  document.body.append(input);
+  const CASES = [
+    ['visibilitychange', 'visibilitychange', document, () => document.dispatchEvent(new Event('visibilitychange'))],
+    ['window blur', 'blur', window, () => window.dispatchEvent(new Event('blur'))],
+    ['pagehide', 'pagehide', window, () => window.dispatchEvent(new Event('pagehide'))],
+    // 元素级 blur 必须放行，否则表单 onBlur 校验会被打断
+    ['元素 blur', 'blur', input, () => input.dispatchEvent(new Event('blur'))],
+  ];
+  const received = [];
+  for (const [label, type, target, fire] of CASES) {
+    target.addEventListener(type, () => {
+      received.push(label);
+      document.getElementById('log').textContent += '页面收到 ' + label + '\n';
+    });
+  }
+
+  // 等 bridge 把配置从 storage 推过来，再触发
+  setTimeout(() => {
+    for (const [, , , fire] of CASES) fire();
+    const blocked = CASES.filter(([l]) => !received.includes(l)).map(([l]) => l);
+    const passed = CASES.filter(([l]) => received.includes(l)).map(([l]) => l);
+    document.getElementById('result').textContent =
+      '已拦截: ' + (blocked.join(', ') || '无') + '  |  已放行: ' + (passed.join(', ') || '无') +
+      '\n' + (blocked.length ? '✓ 插件生效' : '✗ 未拦截（检查插件是否已加载、总开关是否打开）');
+    // 断言：默认配置下 window blur / visibilitychange 被拦，元素 blur 放行
+    console.assert(blocked.includes('window blur') && blocked.includes('visibilitychange'),
+      '默认应拦截 window blur 和 visibilitychange，实际拦截:', blocked);
+    console.assert(received.includes('元素 blur'), '元素上的 blur 不应被拦截');
+  }, 500);
+</script>
+</body>
+</html>
